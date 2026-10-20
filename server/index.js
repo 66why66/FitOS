@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import pg from 'pg';
@@ -502,6 +504,9 @@ app.post('/api/auth/logout', requireAuth, asyncHandler(async (req, res) => {
     message: 'Logged out successfully.',
   });
 }));
+
+const serverDir = path.dirname(fileURLToPath(import.meta.url));
+app.use(express.static(path.resolve(serverDir, '../dist')));
 
 // Not found
 app.use((req, res) => {
