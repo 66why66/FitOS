@@ -1,0 +1,291 @@
+===== FITOS ARCHITECTURE REPORT =====
+DATE: Tue Oct 20 05:43:31 +0330 2026
+ROOT: /data/data/com.termux/files/home/FitOS
+
+===== README =====
+# React + TypeScript + Vite
+
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+
+Currently, two official plugins are available:
+
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+
+## React Compiler
+
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+
+```js
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
+
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+
+```
+
+You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+
+```js
+// eslint.config.js
+import reactX from 'eslint-plugin-react-x'
+import reactDom from 'eslint-plugin-react-dom'
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs['recommended-typescript'],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+
+```
+
+===== PACKAGE.JSON =====
+{
+  "name": "fitos",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "server": "node server/index.js",
+    "db:migrate": "node server/db/migrate.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "bootstrap": "^5.3.8",
+    "connect-pg-simple": "^10.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.8",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.1",
+    "express-session": "^1.19.0",
+    "helmet": "^8.3.0",
+    "pg": "^8.23.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "globals": "^17.13.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.71.2",
+    "vite": "^8.3.4"
+  }
+}
+
+===== SOURCE TREE =====
+src/App.css
+src/App.tsx
+src/assets/hero.png
+src/assets/react.svg
+src/assets/vite.svg
+src/index.css
+src/main.tsx
+server/index.js
+server/db/migrations/001_initial_schema.sql
+server/db/migrations/002_user_sessions.sql
+server/db/migrate.js
+server/config/security.js
+server/index.js.backup
+server/tests/phase1-smoke.mjs
+server/tests/role-matrix.mjs
+public/favicon.svg
+public/icons.svg
+
+===== CONFIG FILES =====
+--- vite.config.ts ---
+import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  plugins: [react()],
+  build: {
+    cssMinify: false,
+  },
+})
+--- tsconfig.json ---
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}
+--- tsconfig.app.json ---
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["vite/client"],
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}
+--- .gitignore ---
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+.env
+
+===== SERVER AND DATABASE MARKERS =====
+src/App.tsx:169:                <div><h3>Today's Classes</h3><p>Your upcoming sessions</p></div>
+server/index.js:5:import bcrypt from 'bcryptjs';
+server/index.js:6:import session from 'express-session';
+server/index.js:18:const PgSession = connectPgSimple(session);
+server/index.js:20:if (!process.env.DATABASE_URL || !process.env.SESSION_SECRET) {
+server/index.js:25:const pool = new Pool({
+server/index.js:26:  connectionString: process.env.DATABASE_URL,
+server/index.js:34:const app = express();
+server/index.js:68:app.use(session({
+server/index.js:72:    tableName: 'user_sessions',
+server/index.js:75:  secret: process.env.SESSION_SECRET,
+server/index.js:81:    secure: process.env.NODE_ENV === 'production',
+server/index.js:93:    req.session.regenerate(error =>
+server/index.js:100:    req.session.save(error =>
+server/index.js:107:    req.session.destroy(error =>
+server/index.js:144:app.get('/api/health', asyncHandler(async (req, res) => {
+server/index.js:155:app.post('/api/auth/register', authLimiter, asyncHandler(async (req, res) => {
+server/index.js:168:  const passwordHash = await bcrypt.hash(data.password, 12);
+server/index.js:233:  req.session.userId = user.id;
+server/index.js:234:  req.session.selectedGymId = gym.id;
+server/index.js:247:app.post('/api/auth/login', authLimiter, asyncHandler(async (req, res) => {
+server/index.js:272:    !(await bcrypt.compare(parsed.data.password, user.password_hash))
+server/index.js:298:  req.session.userId = user.id;
+server/index.js:301:    req.session.selectedGymId = gymsResult.rows[0].id;
+server/index.js:314:    selectedGymId: req.session.selectedGymId || null,
+server/index.js:320:  if (!req.session?.userId) {
+server/index.js:332:  if (!req.session.selectedGymId) {
+server/index.js:347:    [req.session.userId, req.session.selectedGymId]
+server/index.js:376:app.get('/api/auth/me', requireAuth, asyncHandler(async (req, res) => {
+server/index.js:386:    [req.session.userId]
+server/index.js:409:    selectedGymId: req.session.selectedGymId || null,
+server/index.js:414:app.post('/api/auth/select-gym', requireAuth, asyncHandler(async (req, res) => {
+server/index.js:431:    [req.session.userId, parsed.data.gymId]
+server/index.js:441:  req.session.selectedGymId = result.rows[0].id;
+server/index.js:450:// Current gym - tenant context comes only from the verified session.
+server/index.js:451:app.get('/api/gym', requireAuth, requireGym, (req, res) => {
+server/index.js:460:app.get(
+server/index.js:475:app.get(
+server/index.js:490:app.post('/api/auth/logout', requireAuth, asyncHandler(async (req, res) => {
+server/index.js:495:    secure: process.env.NODE_ENV === 'production',
+server/index.js:524:    error: process.env.NODE_ENV === 'production'
+server/index.js:530:const PORT = process.env.PORT || 3001;
+server/db/migrations/001_initial_schema.sql:2:CREATE TABLE gyms (
+server/db/migrations/001_initial_schema.sql:15:CREATE TABLE users (
+server/db/migrations/001_initial_schema.sql:28:CREATE TABLE gym_users (
+server/db/migrations/001_initial_schema.sql:37:CREATE TABLE members (
+server/db/migrations/001_initial_schema.sql:60:CREATE TABLE plans (
+server/db/migrations/001_initial_schema.sql:74:CREATE TABLE memberships (
+server/db/migrations/001_initial_schema.sql:100:CREATE TABLE payments (
+server/db/migrations/001_initial_schema.sql:126:CREATE TABLE attendance (
+server/db/migrations/002_user_sessions.sql:1:CREATE TABLE IF NOT EXISTS user_sessions (
+server/db/migrations/002_user_sessions.sql:7:CREATE INDEX IF NOT EXISTS user_sessions_expire_idx
+server/db/migrations/002_user_sessions.sql:8:ON user_sessions (expire);
+server/db/migrate.js:9:if (!process.env.DATABASE_URL) {
+server/db/migrate.js:14:const pool = new Pool({
+server/db/migrate.js:15:  connectionString: process.env.DATABASE_URL,
+server/db/migrate.js:20:const migrationsDir = path.join(currentDir, 'migrations');
+server/db/migrate.js:30:    CREATE TABLE IF NOT EXISTS schema_migrations (
+server/db/migrate.js:36:  const files = fs.readdirSync(migrationsDir)
+server/db/migrate.js:41:    'SELECT version FROM schema_migrations'
+server/db/migrate.js:55:      path.join(migrationsDir, file),
+server/db/migrate.js:67:        'INSERT INTO schema_migrations (version) VALUES ($1)',
+server/db/migrate.js:80:  console.log('Database migrations completed.');
+server/config/security.js:18:  process.env.FRONTEND_ORIGIN ||
+
+===== TESTS AND DATABASE FILES =====
+./server/db/migrations/001_initial_schema.sql
+./server/db/migrations/002_user_sessions.sql
+
+===== GIT STATUS =====
+Git unavailable
