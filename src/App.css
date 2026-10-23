@@ -138,3 +138,27 @@ html[dir="rtl"] .auth-card > .language-picker {
     transform: translateX(0);
   }
 }
+
+/* Platform owner console */
+.platform-assign {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 130px;
+}
+.platform-assign select {
+  width: 100%;
+  min-width: 130px;
+  padding: 8px;
+  border: 1px solid var(--border, #303746);
+  border-radius: 8px;
+  background: var(--surface, #151a24);
+  color: inherit;
+}
+.table-wrap td code {
+  display: inline-block;
+  max-width: 240px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
