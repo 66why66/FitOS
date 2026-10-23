@@ -35,6 +35,9 @@ pool.on('error', error => {
 
 const app = express();
 
+// Render terminates HTTPS at its proxy.
+app.set('trust proxy', 1);
+
 app.disable('x-powered-by');
 app.use(securityHeaders);
 
