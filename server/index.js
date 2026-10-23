@@ -374,6 +374,134 @@ const requireRole = (...roles) => (req, res, next) => {
   next();
 };
 
+
+const memberCreateSchema = z.object({
+  firstName: z.string().trim().min(1).max(100),
+  lastName: z.string().trim().min(1).max(100),
+  email: z.preprocess(
+    value => value === '' ? undefined : value,
+    z.string().trim().email().max(255).optional()
+  ),
+  phone: z.preprocess(
+    value => value === '' ? undefined : value,
+    z.string().trim().min(3).max(40).optional()
+  ),
+});
+
+// Dashboard values are calculated from this gym's database records.
+app.get('/api/gym/dashboard', requireAuth, requireGym, asyncHandler(async (req, res) => {
+  const result = await pool.query(
+    `SELECT
+       (SELECT COUNT(*)::int
+        FROM members
+        WHERE gym_id = $1 AND status <> 'archived') AS total_members,
+
+       (SELECT COUNT(*)::int
+        FROM memberships
+        WHERE gym_id = $1
+          AND status = 'active'
+          AND starts_at <= (NOW() AT TIME ZONE $2)::date
+          AND ends_at >= (NOW() AT TIME ZONE $2)::date) AS active_memberships,
+
+       (SELECT COUNT(*)::int
+        FROM attendance
+        WHERE gym_id = $1
+          AND check_in >= (
+            date_trunc('day', NOW() AT TIME ZONE $2) AT TIME ZONE $2
+          )
+          AND check_in < (
+            (date_trunc('day', NOW() AT TIME ZONE $2) + INTERVAL '1 day')
+            AT TIME ZONE $2
+          )) AS today_attendance,
+
+       (SELECT COALESCE(SUM(amount_minor), 0)::text
+        FROM payments
+        WHERE gym_id = $1
+          AND status = 'paid'
+          AND paid_at >= (
+            date_trunc('month', NOW() AT TIME ZONE $2) AT TIME ZONE $2
+          )
+          AND paid_at < (
+            (date_trunc('month', NOW() AT TIME ZONE $2) + INTERVAL '1 month')
+            AT TIME ZONE $2
+          )) AS monthly_revenue_minor`,
+    [req.gymId, req.gym.timezone]
+  );
+
+  res.json({
+    success: true,
+    gym: {
+      id: req.gym.id,
+      name: req.gym.name,
+      timezone: req.gym.timezone,
+      currency: req.gym.currency,
+      role: req.role,
+    },
+    stats: result.rows[0],
+  });
+}));
+
+// Recent members are always scoped to the authenticated gym.
+app.get('/api/gym/members', requireAuth, requireGym, asyncHandler(async (req, res) => {
+  const result = await pool.query(
+    `SELECT id, member_no, first_name, last_name, email, phone,
+            status, created_at
+     FROM members
+     WHERE gym_id = $1
+     ORDER BY created_at DESC
+     LIMIT 100`,
+    [req.gymId]
+  );
+
+  res.json({ success: true, members: result.rows });
+}));
+
+app.post('/api/gym/members', requireAuth, requireGym, asyncHandler(async (req, res) => {
+  const parsed = memberCreateSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      success: false,
+      error: 'Please check the member details.',
+      details: validationError(parsed),
+    });
+  }
+
+  const data = parsed.data;
+  const memberNo = 'MEM-' + randomBytes(5).toString('hex').toUpperCase();
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO members
+         (gym_id, member_no, first_name, last_name, email, phone, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active')
+       RETURNING id, member_no, first_name, last_name, email, phone,
+                 status, created_at`,
+      [
+        req.gymId,
+        memberNo,
+        data.firstName,
+        data.lastName,
+        data.email?.toLowerCase() || null,
+        data.phone || null,
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      member: result.rows[0],
+    });
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        error: 'A member with these details may already exist.',
+      });
+    }
+    throw error;
+  }
+}));
+
 // Current user and accessible gyms
 app.get('/api/auth/me', requireAuth, asyncHandler(async (req, res) => {
   const result = await pool.query(
