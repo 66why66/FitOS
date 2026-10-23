@@ -282,6 +282,38 @@ app.post('/api/auth/login', authLimiter, asyncHandler(async (req, res) => {
     });
   }
 
+  // One-time platform-owner bootstrap, enabled only after the DB migration.
+  const platformOwnerEmail = process.env.PLATFORM_OWNER_EMAIL?.trim().toLowerCase();
+  if (platformOwnerEmail && email === platformOwnerEmail) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock($1)', [72819461]);
+      const existingOwner = await client.query(
+        'SELECT user_id FROM platform_owners LIMIT 1'
+      );
+      if (existingOwner.rows.length === 0) {
+        const promoted = await client.query(
+          'INSERT INTO platform_owners (user_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING user_id',
+          [user.id]
+        );
+        if (promoted.rows.length) {
+          await client.query(
+            `INSERT INTO platform_audit_log (actor_user_id, action, target_type, target_id, details)
+             VALUES ($1, 'platform.owner.bootstrap', 'user', $2, '{}'::jsonb)`,
+            [user.id, String(user.id)]
+          );
+        }
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   const gymsResult = await pool.query(
     `SELECT g.id, g.name, g.slug, g.timezone, g.currency,
             g.status, gu.role
@@ -377,6 +409,29 @@ const requireRole = (...roles) => (req, res, next) => {
   next();
 };
 
+
+
+const requirePlatformOwner = asyncHandler(async (req, res, next) => {
+  const result = await pool.query(
+    'SELECT 1 FROM platform_owners WHERE user_id = $1 LIMIT 1',
+    [req.session.userId]
+  );
+  if (!result.rows.length) {
+    return res.status(403).json({
+      success: false,
+      error: 'Platform owner access required.',
+    });
+  }
+  next();
+});
+
+const writePlatformAudit = (actorId, action, targetType, targetId, details = {}) =>
+  pool.query(
+    `INSERT INTO platform_audit_log
+       (actor_user_id, action, target_type, target_id, details)
+     VALUES ($1, $2, $3, $4, $5::jsonb)`,
+    [actorId, action, targetType, String(targetId), JSON.stringify(details)]
+  );
 
 const memberCreateSchema = z.object({
   firstName: z.string().trim().min(1).max(100),
@@ -503,6 +558,183 @@ app.post('/api/gym/members', requireAuth, requireGym, asyncHandler(async (req, r
     }
     throw error;
   }
+}));
+
+
+// Platform owner APIs: every route is protected by a database-backed owner check.
+app.get('/api/platform/dashboard', requireAuth, requirePlatformOwner, asyncHandler(async (req, res) => {
+  const result = await pool.query(`
+    SELECT
+      (SELECT COUNT(*)::int FROM gyms) AS total_gyms,
+      (SELECT COUNT(*)::int FROM gyms WHERE status = 'active') AS active_gyms,
+      (SELECT COUNT(*)::int FROM gyms WHERE status = 'suspended') AS suspended_gyms,
+      (SELECT COUNT(*)::int FROM platform_plans) AS total_plans,
+      (SELECT COUNT(*)::int FROM gym_subscriptions WHERE status = 'active'
+        AND (ends_at IS NULL OR ends_at >= NOW())
+        AND (starts_at IS NULL OR starts_at <= NOW())) AS active_subscriptions,
+      (SELECT COUNT(*)::int FROM gym_subscriptions
+        WHERE status IN ('expired', 'past_due')) AS attention_subscriptions
+  `);
+  res.json({ success: true, dashboard: result.rows[0] });
+}));
+
+app.get('/api/platform/gyms', requireAuth, requirePlatformOwner, asyncHandler(async (req, res) => {
+  const result = await pool.query(`
+    SELECT g.id, g.name, g.slug, g.status, g.currency, g.timezone, g.created_at,
+      (SELECT u.email FROM gym_users gu JOIN users u ON u.id = gu.user_id
+       WHERE gu.gym_id = g.id AND gu.role = 'owner'
+       ORDER BY gu.created_at LIMIT 1) AS owner_email,
+      sub.status AS subscription_status,
+      sub.ends_at AS subscription_ends_at,
+      sub.plan_name
+    FROM gyms g
+    LEFT JOIN LATERAL (
+      SELECT gs.status, gs.ends_at, pp.name AS plan_name
+      FROM gym_subscriptions gs
+      JOIN platform_plans pp ON pp.id = gs.plan_id
+      WHERE gs.gym_id = g.id
+      ORDER BY gs.created_at DESC
+      LIMIT 1
+    ) sub ON TRUE
+    ORDER BY g.created_at DESC
+  `);
+  res.json({ success: true, gyms: result.rows });
+}));
+
+app.patch('/api/platform/gyms/:id/status', requireAuth, requirePlatformOwner, asyncHandler(async (req, res) => {
+  if (!/^\d+$/.test(req.params.id)) {
+    return res.status(400).json({ success: false, error: 'Invalid gym ID.' });
+  }
+  const parsed = z.object({
+    status: z.enum(['active', 'suspended', 'inactive']),
+  }).safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ success: false, error: 'Invalid gym status.' });
+  }
+
+  const result = await pool.query(
+    'UPDATE gyms SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name, status',
+    [parsed.data.status, req.params.id]
+  );
+  if (!result.rows.length) {
+    return res.status(404).json({ success: false, error: 'Gym not found.' });
+  }
+  await writePlatformAudit(
+    req.session.userId, 'platform.gym.status_changed', 'gym',
+    req.params.id, { status: parsed.data.status }
+  );
+  res.json({ success: true, gym: result.rows[0] });
+}));
+
+app.get('/api/platform/plans', requireAuth, requirePlatformOwner, asyncHandler(async (req, res) => {
+  const result = await pool.query(
+    'SELECT id, name, description, price_minor, currency, duration_days, is_active, created_at FROM platform_plans ORDER BY price_minor, name'
+  );
+  res.json({ success: true, plans: result.rows });
+}));
+
+app.post('/api/platform/plans', requireAuth, requirePlatformOwner, asyncHandler(async (req, res) => {
+  const parsed = z.object({
+    name: z.string().trim().min(2).max(100),
+    description: z.string().trim().max(2000).optional().default(''),
+    priceMinor: z.number().int().min(0).max(100000000000),
+    currency: z.string().trim().regex(/^[A-Za-z]{3}$/).optional().default('USD'),
+    durationDays: z.number().int().min(1).max(3650),
+    isActive: z.boolean().optional().default(true),
+  }).safeParse(req.body);
+
+  if (!parsed.success) {
+    return res.status(400).json({ success: false, error: 'Invalid plan details.' });
+  }
+
+  const p = parsed.data;
+  try {
+    const result = await pool.query(
+      `INSERT INTO platform_plans
+        (name, description, price_minor, currency, duration_days, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, name, description, price_minor, currency, duration_days, is_active`,
+      [p.name, p.description, p.priceMinor, p.currency.toUpperCase(), p.durationDays, p.isActive]
+    );
+    await writePlatformAudit(req.session.userId, 'platform.plan.created', 'plan', result.rows[0].id, {
+      name: p.name, priceMinor: p.priceMinor, currency: p.currency.toUpperCase(),
+      durationDays: p.durationDays
+    });
+    res.status(201).json({ success: true, plan: result.rows[0] });
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ success: false, error: 'A plan with this name already exists.' });
+    }
+    throw error;
+  }
+}));
+
+app.post('/api/platform/gyms/:id/subscription', requireAuth, requirePlatformOwner, asyncHandler(async (req, res) => {
+  if (!/^\d+$/.test(req.params.id)) {
+    return res.status(400).json({ success: false, error: 'Invalid gym ID.' });
+  }
+  const parsed = z.object({
+    planId: z.number().int().positive(),
+    status: z.enum(['pending', 'active', 'past_due', 'cancelled', 'expired']).optional().default('active'),
+    startsAt: z.string().datetime().optional(),
+    endsAt: z.string().datetime().optional(),
+  }).refine(v => !v.startsAt || !v.endsAt || new Date(v.endsAt) >= new Date(v.startsAt), {
+    message: 'End date must not be before start date.'
+  }).safeParse(req.body);
+
+  if (!parsed.success) {
+    return res.status(400).json({ success: false, error: 'Invalid subscription details.' });
+  }
+
+  const p = parsed.data;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const gym = await client.query('SELECT id FROM gyms WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (!gym.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, error: 'Gym not found.' });
+    }
+    const plan = await client.query(
+      'SELECT id FROM platform_plans WHERE id = $1 AND is_active = TRUE',
+      [p.planId]
+    );
+    if (!plan.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, error: 'Active plan not found.' });
+    }
+    const result = await client.query(
+      `INSERT INTO gym_subscriptions (gym_id, plan_id, status, starts_at, ends_at)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, gym_id, plan_id, status, starts_at, ends_at, created_at`,
+      [req.params.id, p.planId, p.status, p.startsAt ?? null, p.endsAt ?? null]
+    );
+    await client.query(
+      `INSERT INTO platform_audit_log (actor_user_id, action, target_type, target_id, details)
+       VALUES ($1, 'platform.subscription.assigned', 'gym', $2, $3::jsonb)`,
+      [req.session.userId, String(req.params.id), JSON.stringify({
+        subscriptionId: result.rows[0].id, planId: p.planId, status: p.status
+      })]
+    );
+    await client.query('COMMIT');
+    res.status(201).json({ success: true, subscription: result.rows[0] });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
+app.get('/api/platform/audit-log', requireAuth, requirePlatformOwner, asyncHandler(async (req, res) => {
+  const parsed = z.coerce.number().int().min(1).max(200).optional().safeParse(req.query.limit);
+  const limit = parsed.success && parsed.data ? parsed.data : 50;
+  const result = await pool.query(
+    `SELECT id, actor_user_id, action, target_type, target_id, details, created_at
+     FROM platform_audit_log ORDER BY created_at DESC LIMIT $1`,
+    [limit]
+  );
+  res.json({ success: true, events: result.rows });
 }));
 
 // Current user and accessible gyms
