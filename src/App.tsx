@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { languages, translate } from './i18n';
 import './App.css';
 
 type User = { id: number; email: string; fullName: string };
@@ -61,6 +62,16 @@ async function api(path: string, options: RequestInit = {}): Promise<ApiResult> 
 }
 
 function App() {
+  const [language, setLanguage] = useState(() => {
+    try { const saved = localStorage.getItem('fitos-language'); return languages.some(item => item.code === saved) ? saved! : 'en'; } catch { return 'en'; }
+  });
+  const t = (key: string) => translate(language, key);
+  const direction = languages.find(item => item.code === language)?.dir || 'ltr';
+  useEffect(() => {
+    try { localStorage.setItem('fitos-language', language); } catch { /* storage may be unavailable */ }
+    document.documentElement.lang = language;
+    document.documentElement.dir = direction;
+  }, [language, direction]);
   const [user, setUser] = useState<User | null>(null);
   const [gym, setGym] = useState<Gym | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -228,38 +239,39 @@ function App() {
   });
 
   if (loading) {
-    return <div className="loading-screen"><div className="brand-symbol">F</div><p>Loading FitOS…</p></div>;
+    return <div className="loading-screen" dir={direction}><LanguagePicker language={language} setLanguage={setLanguage} t={t} /><div className="brand-symbol">F</div><p>{t("Loading FitOS…")}</p></div>;
   }
 
   if (!user) {
     return (
-      <main className="auth-page">
+      <main className="auth-page" dir={direction}>
         <section className="auth-card">
+          <LanguagePicker language={language} setLanguage={setLanguage} t={t} />
           <div className="auth-brand"><div className="brand-symbol">F</div><span>FitOS</span></div>
-          <p className="eyebrow">FITNESS MANAGEMENT</p>
-          <h1>{authMode === 'login' ? 'Welcome back' : 'Create your workspace'}</h1>
+          <p className="eyebrow">{t("FITNESS MANAGEMENT")}</p>
+          <h1>{t(authMode === 'login' ? 'Welcome back' : 'Create your workspace')}</h1>
           <p className="muted">
             {authMode === 'login'
-              ? 'Sign in to manage your gym.'
-              : 'Create an owner account and your first gym.'}
+              ? t('Sign in to manage your gym.')
+              : t('Create an owner account and your first gym.')}
           </p>
           {error && <div className="alert error">{error}</div>}
           <form className="auth-form" onSubmit={handleAuth}>
             {authMode === 'register' && <>
-              <label>Full name<input name="fullName" autoComplete="name" required minLength={2} maxLength={150} /></label>
-              <label>Gym name<input name="gymName" required minLength={2} maxLength={150} /></label>
+              <label>{t("Full name")}<input name="fullName" autoComplete="name" required minLength={2} maxLength={150} /></label>
+              <label>{t("Gym name")}<input name="gymName" required minLength={2} maxLength={150} /></label>
             </>}
-            <label>Email<input name="email" type="email" autoComplete="email" required maxLength={255} /></label>
-            <label>Password<input name="password" type="password" autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} required minLength={authMode === 'register' ? 12 : 1} /></label>
+            <label>{t("Email")}<input name="email" type="email" autoComplete="email" required maxLength={255} /></label>
+            <label>{t("Password")}<input name="password" type="password" autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} required minLength={authMode === 'register' ? 12 : 1} /></label>
             {authMode === 'register' && <p className="hint">Use at least 12 characters for your password.</p>}
             <button className="primary-button" type="submit" disabled={busy}>
-              {busy ? 'Please wait…' : authMode === 'login' ? 'Sign in' : 'Create account'}
+              {busy ? t('Please wait…') : t(authMode === 'login' ? 'Sign in' : 'Create account')}
             </button>
           </form>
           <p className="auth-switch">
-            {authMode === 'login' ? 'New to FitOS?' : 'Already have an account?'}{' '}
+            {authMode === 'login' ? t('New to FitOS?') : t('Already have an account?')}{' '}
             <button onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setError(''); }}>
-              {authMode === 'login' ? 'Create an account' : 'Sign in'}
+              {authMode === 'login' ? t('Create an account') : t('Sign in')}
             </button>
           </p>
           <p className="hint">Your data is loaded from your FitOS account and gym database.</p>
@@ -269,24 +281,24 @@ function App() {
   }
 
   return (
-    <div className="dashboard">
+    <div className="dashboard" dir={direction}>
       <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}>
         <div className="sidebar-brand">
           <div className="brand-symbol">F</div><span>FitOS</span>
           <button className="mobile-close" onClick={() => setMobileMenu(false)}>×</button>
         </div>
-        <div className="workspace-label">WORKSPACE</div>
+        <div className="workspace-label">{t("WORKSPACE")}</div>
         <div className="gym-selector">
           <div className="gym-avatar">{(gym?.name || 'G').slice(0, 1).toUpperCase()}</div>
           <div className="gym-name"><strong>{gym?.name || 'Your gym'}</strong><small>{gym?.role || 'Workspace'}</small></div>
         </div>
-        <div className="menu-label">MAIN MENU</div>
+        <div className="menu-label">{t("MAIN MENU")}</div>
         <nav className="side-menu">
           {menu.map(item => (
             <button key={item.label}
               className={`menu-item ${active === item.label ? 'active' : ''}`}
               onClick={() => { setActive(item.label); setMobileMenu(false); setError(''); }}>
-              <span className="menu-icon">{item.icon}</span>{item.label}
+              <span className="menu-icon">{item.icon}</span>{t(item.label)}
               {item.label === 'Members' && <span className="menu-count">{members.length}</span>}
             </button>
           ))}
@@ -294,13 +306,13 @@ function App() {
         <div className="sidebar-bottom">
           <div className="upgrade-card">
             <div className="upgrade-icon">✦</div>
-            <strong>Your gym, your data</strong>
-            <p>Dashboard metrics are read from your database.</p>
+            <strong>{t("Your gym, your data")}</strong>
+            <p>{t("Dashboard metrics are read from your database.")}</p>
           </div>
           <div className="profile">
             <div className="profile-avatar">{(user.fullName || user.email).slice(0, 1).toUpperCase()}</div>
             <div className="profile-info"><strong>{user.fullName}</strong><small>{user.email}</small></div>
-            <button className="logout-button" onClick={logout} disabled={busy} title="Sign out">↪</button>
+            <button className="logout-button" onClick={logout} disabled={busy} title={t("Sign out")}>↪</button>
           </div>
         </div>
       </aside>
@@ -310,9 +322,9 @@ function App() {
         <header className="topbar">
           <div className="topbar-left">
             <button className="mobile-menu-button" onClick={() => setMobileMenu(true)}>☰</button>
-            <div><div className="breadcrumb">Workspace / <span>{active}</span></div><h1>{active}</h1></div>
+            <div><div className="breadcrumb">{t("WORKSPACE")} / <span>{t(active)}</span></div><h1>{t(active)}</h1></div>
           </div>
-          <div className="topbar-actions"><span className="live-dot" /> <span className="muted">Connected</span></div>
+          <div className="topbar-actions"><LanguagePicker language={language} setLanguage={setLanguage} t={t} /><span className="live-dot" /> <span className="muted">{t("Connected")}</span></div>
         </header>
 
         <div className="content-area">
@@ -321,17 +333,17 @@ function App() {
 
           {active === 'Overview' && <>
             <section className="welcome-row">
-              <div><p className="eyebrow">YOUR WORKSPACE</p><h2>Welcome, {user.fullName.split(' ')[0]}.</h2><p className="muted">Here is what your gym database reports right now.</p></div>
-              <button className="secondary-button" onClick={() => loadWorkspace(user).catch(err => setError(err.message))}>↻ Refresh data</button>
+              <div><p className="eyebrow">{t("YOUR WORKSPACE")}</p><h2>{t("Welcome")}, {user.fullName.split(' ')[0]}.</h2><p className="muted">{t("Here is what your gym database reports right now.")}</p></div>
+              <button className="secondary-button" onClick={() => loadWorkspace(user).catch(err => setError(err.message))}>{t("Refresh data")}</button>
             </section>
             <section className="stats-grid">
-              <article className="stat-card"><div className="stat-top"><span>Total Members</span><span className="stat-icon cyan">♙</span></div><div className="stat-value">{number(stats?.total_members)}</div><div className="stat-bottom">Database count · archived members excluded</div></article>
-              <article className="stat-card"><div className="stat-top"><span>Monthly Revenue</span><span className="stat-icon purple">$</span></div><div className="stat-value">{money(stats?.monthly_revenue_minor)}</div><div className="stat-bottom">Paid payments this month</div></article>
-              <article className="stat-card"><div className="stat-top"><span>Today's Attendance</span><span className="stat-icon green">◷</span></div><div className="stat-value">{number(stats?.today_attendance)}</div><div className="stat-bottom">Check-ins today, gym local time</div></article>
-              <article className="stat-card"><div className="stat-top"><span>Active Memberships</span><span className="stat-icon orange">◈</span></div><div className="stat-value">{number(stats?.active_memberships)}</div><div className="stat-bottom">Active and within membership dates</div></article>
+              <article className="stat-card"><div className="stat-top"><span>{t("Total Members")}</span><span className="stat-icon cyan">♙</span></div><div className="stat-value">{number(stats?.total_members)}</div><div className="stat-bottom">Database count · archived members excluded</div></article>
+              <article className="stat-card"><div className="stat-top"><span>{t("Monthly Revenue")}</span><span className="stat-icon purple">$</span></div><div className="stat-value">{money(stats?.monthly_revenue_minor)}</div><div className="stat-bottom">Paid payments this month</div></article>
+              <article className="stat-card"><div className="stat-top"><span>{t("Today's Attendance")}</span><span className="stat-icon green">◷</span></div><div className="stat-value">{number(stats?.today_attendance)}</div><div className="stat-bottom">Check-ins today, gym local time</div></article>
+              <article className="stat-card"><div className="stat-top"><span>{t("Active Memberships")}</span><span className="stat-icon orange">◈</span></div><div className="stat-value">{number(stats?.active_memberships)}</div><div className="stat-bottom">Active and within membership dates</div></article>
             </section>
             <section className="panel members-panel">
-              <div className="panel-heading"><div><h3>Recently added members</h3><p>Latest records from your gym database.</p></div><button className="text-link" onClick={() => setActive('Members')}>View members →</button></div>
+              <div className="panel-heading"><div><h3>{t("Recently added members")}</h3><p>{t("Latest records from your gym database.")}</p></div><button className="text-link" onClick={() => setActive('Members')}>{t("View members →")}</button></div>
               <MemberTable members={members.slice(0, 5)} />
             </section>
             <p className="hint page-note">Growth percentages and revenue charts are hidden until reliable historical data is available.</p>
@@ -339,29 +351,29 @@ function App() {
 
           {active === 'Members' && <>
             <section className="welcome-row">
-              <div><p className="eyebrow">MEMBER DIRECTORY</p><h2>Members</h2><p className="muted">{members.length} records loaded from the database.</p></div>
-              <button className="primary-button compact" onClick={() => setShowMemberForm(!showMemberForm)}>{showMemberForm ? 'Cancel' : '+ Add member'}</button>
+              <div><p className="eyebrow">MEMBER DIRECTORY</p><h2>{t("Members")}</h2><p className="muted">{members.length} records loaded from the database.</p></div>
+              <button className="primary-button compact" onClick={() => setShowMemberForm(!showMemberForm)}>{showMemberForm ? t('Cancel') : '+ ' + t('Add member')}</button>
             </section>
-            {showMemberForm && <section className="panel form-panel"><h3>Add a member</h3>
+            {showMemberForm && <section className="panel form-panel"><h3>{t("Add a member")}</h3>
               <form className="member-form" onSubmit={addMember}>
-                <label>First name<input name="firstName" required maxLength={100} /></label>
-                <label>Last name<input name="lastName" required maxLength={100} /></label>
-                <label>Email (optional)<input name="email" type="email" maxLength={255} /></label>
-                <label>Phone (optional)<input name="phone" maxLength={40} /></label>
-                <button className="primary-button" disabled={busy} type="submit">{busy ? 'Saving…' : 'Save member'}</button>
+                <label>{t("First name")}<input name="firstName" required maxLength={100} /></label>
+                <label>{t("Last name")}<input name="lastName" required maxLength={100} /></label>
+                <label>{t("Email (optional)")}<input name="email" type="email" maxLength={255} /></label>
+                <label>{t("Phone (optional)")}<input name="phone" maxLength={40} /></label>
+                <button className="primary-button" disabled={busy} type="submit">{busy ? t('Saving…') : t('Save member')}</button>
               </form>
             </section>}
             <section className="panel members-panel">
-              <div className="panel-heading"><div><h3>All recent members</h3><p>Showing up to 100 newest records.</p></div><input className="search-input" placeholder="Search members…" value={search} onChange={event => setSearch(event.target.value)} /></div>
+              <div className="panel-heading"><div><h3>{t("All recent members")}</h3><p>Showing up to 100 newest records.</p></div><input className="search-input" placeholder={t("Search members…")} value={search} onChange={event => setSearch(event.target.value)} /></div>
               <MemberTable members={visibleMembers} />
             </section>
           </>}
 
           {active !== 'Overview' && active !== 'Members' && <section className="panel coming-soon">
-            <div className="coming-icon">◈</div><h2>{active}</h2>
-            <p>This section is not connected to a working backend yet.</p>
-            <p className="muted">FitOS will not display invented records here.</p>
-            <button className="secondary-button" onClick={() => setActive('Overview')}>Back to overview</button>
+            <div className="coming-icon">◈</div><h2>{t(active)}</h2>
+            <p>{t("This section is not connected to a working backend yet.")}</p>
+            <p className="muted">{t("FitOS will not display invented records here.")}</p>
+            <button className="secondary-button" onClick={() => setActive('Overview')}>{t("Back to overview")}</button>
           </section>}
         </div>
       </main>
@@ -369,12 +381,31 @@ function App() {
   );
 }
 
+
+function LanguagePicker({ language, setLanguage, t }: {
+  language: string;
+  setLanguage: (value: string) => void;
+  t: (key: string) => string;
+}) {
+  return (
+    <label className="language-picker">
+      <span aria-hidden="true">◎</span>
+      <span className="language-label">{t('Language')}</span>
+      <select aria-label={t('Language')} value={language} onChange={event => setLanguage(event.target.value)}>
+        {languages.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}
+      </select>
+    </label>
+  );
+}
+
 function MemberTable({ members }: { members: Member[] }) {
+  const language = (() => { try { return localStorage.getItem("fitos-language") || "en"; } catch { return "en"; } })();
+  const t = (key: string) => translate(language, key);
   if (!members.length) {
-    return <div className="empty-state"><span>♙</span><strong>No members found</strong><p>Add a member or try a different search.</p></div>;
+    return <div className="empty-state"><span>♙</span><strong>{t("No members found")}</strong><p>{t("Add a member or try a different search.")}</p></div>;
   }
   return <div className="table-wrap"><table>
-    <thead><tr><th>MEMBER</th><th>MEMBER ID</th><th>EMAIL / PHONE</th><th>STATUS</th></tr></thead>
+    <thead><tr><th>{t("MEMBER")}</th><th>{t("MEMBER ID")}</th><th>{t("EMAIL / PHONE")}</th><th>{t("STATUS")}</th></tr></thead>
     <tbody>{members.map(member => <tr key={member.id}>
       <td><div className="member-cell"><div className="member-avatar">{(member.first_name[0] || '') + (member.last_name[0] || '')}</div><div><strong>{member.first_name} {member.last_name}</strong><small>Added {new Date(member.created_at).toLocaleDateString()}</small></div></div></td>
       <td>{member.member_no}</td>
