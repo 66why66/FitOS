@@ -204,9 +204,10 @@ app.post('/api/auth/register', authLimiter, asyncHandler(async (req, res) => {
     user = userResult.rows[0];
 
     const gymResult = await client.query(
-      `INSERT INTO gyms (name, slug, timezone, currency)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, name, slug, timezone, currency, status`,
+      `INSERT INTO gyms
+         (name, slug, timezone, currency, trial_started_at, trial_ends_at)
+       VALUES ($1, $2, $3, $4, NOW(), NOW() + INTERVAL '14 days')
+       RETURNING id, name, slug, timezone, currency, status, trial_ends_at`,
       [data.gymName, baseSlug, data.timezone, data.currency.toUpperCase()]
     );
 
@@ -375,7 +376,7 @@ const requireGym = asyncHandler(async (req, res, next) => {
 
   const result = await pool.query(
     `SELECT g.id, g.name, g.slug, g.timezone, g.currency,
-            g.status, gu.role
+            g.status, g.trial_ends_at, gu.role
      FROM gym_users gu
      JOIN gyms g ON g.id = gu.gym_id
      WHERE gu.user_id = $1 AND gu.gym_id = $2
@@ -391,9 +392,34 @@ const requireGym = asyncHandler(async (req, res, next) => {
     });
   }
 
-  req.gym = result.rows[0];
-  req.gymId = result.rows[0].id;
-  req.role = result.rows[0].role;
+  const gym = result.rows[0];
+
+  const trialActive = gym.trial_ends_at &&
+    new Date(gym.trial_ends_at).getTime() > Date.now();
+
+  const subscriptionResult = await pool.query(
+    `SELECT EXISTS (
+       SELECT 1 FROM gym_subscriptions
+       WHERE gym_id = $1
+         AND status = 'active'
+         AND (starts_at IS NULL OR starts_at <= NOW())
+         AND (ends_at IS NULL OR ends_at > NOW())
+     ) AS active`,
+    [gym.id]
+  );
+
+  if (!trialActive && !subscriptionResult.rows[0].active) {
+    return res.status(402).json({
+      success: false,
+      code: 'SUBSCRIPTION_REQUIRED',
+      error: 'Your free trial has ended. An active subscription is required.',
+      trialEnded: true,
+    });
+  }
+
+  req.gym = gym;
+  req.gymId = gym.id;
+  req.role = gym.role;
 
   next();
 });
